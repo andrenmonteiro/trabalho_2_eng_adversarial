@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -30,57 +31,66 @@ class GameState:
     trace: list[dict[str, Any]] = field(default_factory=list)
 
 
-DEMO_TICKETS = (
-    Ticket(
-        ticket_id="CH-001",
-        description="Impressora da telefonia não funciona.",
-        true_urgency=1,
-        true_impact=1,
+DEMO_TICKET_GROUPS = (
+    (
+        "Impressora da telefonia não funciona.",
+        ((1, 1), (2, 1), (2, 2)),
     ),
-    Ticket(
-        ticket_id="CH-002",
-        description="Uma pessoa relata lentidão em uma ferramenta interna não crítica.",
-        true_urgency=1,
-        true_impact=1,
+    (
+        "Uma pessoa relata lentidão em uma ferramenta interna não crítica.",
+        ((1, 1), (2, 1), (2, 2)),
     ),
-    Ticket(
-        ticket_id="CH-003",
-        description="O sistema financeiro não permite emitir notas para uma equipe.",
-        true_urgency=3,
-        true_impact=2,
+    (
+        "Uma pessoa não consegue acessar a VPN para trabalhar remotamente.",
+        ((1, 1), (2, 2), (3, 2)),
     ),
-    Ticket(
-        ticket_id="CH-004",
-        description="Impressora da telefonia não funciona.",
-        true_urgency=1,
-        true_impact=1,
+    (
+        "O sistema financeiro apresenta erro ao emitir notas fiscais.",
+        ((1, 1), (2, 2), (3, 2)),
     ),
-    Ticket(
-        ticket_id="CH-005",
-        description="Uma pessoa não consegue acessar a VPN para trabalhar remotamente.",
-        true_urgency=2,
-        true_impact=2,
+    (
+        "O leitor de código de barras falha durante o registro de produtos.",
+        ((1, 1), (2, 1), (3, 2)),
     ),
-    Ticket(
-        ticket_id="CH-006",
-        description="Impressora da telefonia não funciona.",
-        true_urgency=1,
-        true_impact=1,
+    (
+        "Uma pessoa não consegue abrir arquivos em uma pasta compartilhada.",
+        ((1, 1), (2, 2), (3, 2)),
     ),
-    Ticket(
-        ticket_id="CH-007",
-        description="A rede está indisponível para várias pessoas de um setor.",
-        true_urgency=3,
-        true_impact=3,
+    (
+        "O sistema de folha de pagamento demora para carregar um relatório.",
+        ((1, 1), (2, 2), (3, 2)),
     ),
-    Ticket(
-        ticket_id="CH-008",
-        description="Impressora da telefonia não funciona.",
-        true_urgency=1,
-        true_impact=1,
+    (
+        "A conexão de rede está lenta para uma equipe de um setor.",
+        ((1, 1), (2, 2), (3, 3)),
     ),
 )
+DEMO_TICKETS = tuple(
+    Ticket(
+        ticket_id=f"POOL-{group_index:02d}-{variant_index}",
+        description=description,
+        true_urgency=levels[0],
+        true_impact=levels[1],
+    )
+    for group_index, (description, variants) in enumerate(DEMO_TICKET_GROUPS, start=1)
+    for variant_index, levels in enumerate(variants, start=1)
+)
 DEFAULT_SIMULATION_TICKETS = DEMO_TICKETS[:3]
+
+
+def create_demo_tickets(rng: random.Random | None = None) -> tuple[Ticket, ...]:
+    """Select four varied incident types, each with a low and variable-severity case."""
+    chooser = rng or random.SystemRandom()
+    selected_groups = chooser.sample(DEMO_TICKET_GROUPS, k=4)
+    selected: list[Ticket] = []
+    for description, variants in selected_groups:
+        selected.append(Ticket("", description, *variants[0]))
+        selected.append(Ticket("", description, *chooser.choice(variants[1:])))
+    chooser.shuffle(selected)
+    return tuple(
+        Ticket(f"CH-{index:03d}", ticket.description, ticket.true_urgency, ticket.true_impact)
+        for index, ticket in enumerate(selected, start=1)
+    )
 
 
 def priority(urgency: int, impact: int) -> str:
@@ -284,6 +294,40 @@ class Simulation:
 
     def _requester_observation(self, round_number: int, ticket: Ticket) -> dict[str, Any]:
         # The requester knows its own true situation and sees only its past outcomes.
+        same_description_history = [
+            item for item in self.state.history if item["description"] == ticket.description
+        ]
+        review_count = sum(item["system"]["reviewed"] for item in self.state.history)
+        # Start with a 25% prior risk, then adapt it using observed review history.
+        review_risk = (review_count + 1) / (len(self.state.history) + 4)
+        used_strategies = [item["requester"]["action"] for item in same_description_history]
+        declaration_options = []
+        for urgency in range(1, 4):
+            for impact in range(1, 4):
+                category = _classify_declaration(ticket, urgency, impact)
+                declared_priority = priority(urgency, impact)
+                wait_saved = _wait_units(priority(ticket.true_urgency, ticket.true_impact)) - _wait_units(declared_priority)
+                utility = wait_saved * 8
+                if category == "honest":
+                    utility += 5
+                if category in ("moderate_inflate", "inflate"):
+                    utility -= review_risk * 20
+                if (
+                    same_description_history
+                    and category in ("honest", "moderate_inflate", "inflate")
+                    and category not in used_strategies
+                ):
+                    utility += 8
+                declaration_options.append(
+                    {
+                        "urgency": urgency,
+                        "impact": impact,
+                        "category": category,
+                        "priority": declared_priority,
+                        "estimated_wait_saved": wait_saved,
+                        "estimated_utility": round(utility, 1),
+                    }
+                )
         return {
             "round": round_number,
             "ticket": {
@@ -308,10 +352,10 @@ class Simulation:
                 for item in self.state.history
             ],
             "same_description_strategies_already_used": [
-                item["requester"]["action"]
-                for item in self.state.history
-                if item["description"] == ticket.description
+                item["requester"]["action"] for item in same_description_history
             ],
+            "declaration_options_with_estimated_utility": declaration_options,
+            "estimated_review_probability": round(review_risk, 2),
             "goals": [
                 "resolver o problema com o menor tempo de espera possível",
                 "evitar perder credibilidade para as próximas solicitações",
@@ -326,6 +370,7 @@ class Simulation:
                 "strategy": "choose any urgency and impact combination from 1 to 3 to maximize expected personal utility; there is no automatic honesty rule",
                 "repeat_case_history": "previous declared levels for matching descriptions are shown and may inform a different declaration this time",
                 "strategy_exploration_bonus": "on a repeated description, using an honest, moderate_inflate, or inflate strategy not previously used for this description earns +8 requester utility points; this is a bonus, not a forced action",
+                "estimated_utility": "each avoided wait unit is +8; honesty is +5; an inflation confirmed on review is -20; the displayed option scores estimate this using the historical review rate and include any new-strategy bonus",
                 "review_feedback": "the requester sees whether a review occurred and the final priority",
             },
         }

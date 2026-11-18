@@ -7,7 +7,7 @@ import sys
 
 from .agents import AgnoDecisionMaker
 from .models import Ticket
-from .simulation import Simulation, SimulationError, report_as_text
+from .simulation import Simulation, SimulationError, create_demo_tickets, report_as_text
 
 
 def main() -> int:
@@ -37,14 +37,12 @@ def main() -> int:
 
 def _choose_tickets() -> tuple[Ticket, ...]:
     print("SIMULAÇÃO DE PRIORIDADE DE CHAMADOS")
-    print("1. Executar cenário padrão (3 chamados)")
+    print("1. Executar cenário padrão (8 chamados)")
     print("2. Informar um chamado manualmente")
     while True:
         choice = input("Escolha 1 ou 2: ").strip()
         if choice == "1":
-            from .simulation import DEMO_TICKETS
-
-            return DEMO_TICKETS
+            return create_demo_tickets()
         if choice == "2":
             description = input("Descreva o problema observado: ").strip()
             while not description:

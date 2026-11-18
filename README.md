@@ -80,7 +80,7 @@ Inicie a simulação:
 & ".\.venv\Scripts\python.exe" -m adversarial_agents.cli
 ```
 
-No menu, escolha `1` para os oito chamados do cenário padrão ou `2` para descrever um chamado manual. No modo manual, escreva a descrição e informe a urgência e o impacto reais usando valores de 1 a 3. O solicitante selecionará os níveis que vai declarar; o técnico não verá os níveis reais.
+No menu, escolha `1` para oito chamados selecionados de um catálogo de 24 variações ou `2` para descrever um chamado manual. O cenário escolhe quatro tipos de incidente por execução e inclui duas ocorrências de cada descrição: uma de baixa criticidade e outra com gravidade variável. A seleção e a ordem mudam a cada execução, mantendo oito rodadas. No modo manual, escreva a descrição e informe a urgência e o impacto reais usando valores de 1 a 3. O solicitante selecionará os níveis que vai declarar; o técnico não verá os níveis reais.
 
 O cenário padrão faz até 16 chamadas ao Gemini e pode levar alguns minutos. O simulador espera 12,5 segundos entre chamadas para respeitar cotas configuradas. Confira os limites da sua conta no painel do [Google AI Studio](https://aistudio.google.com/rate-limit). Se a API retornar erro `429` com `retryDelay`, aguarde o tempo informado antes de tentar novamente. Se sua cota permitir outra velocidade, ajuste `GEMINI_MIN_INTERVAL_SECONDS`.
 
@@ -100,7 +100,7 @@ A saída mostra a descrição do chamado, os níveis declarados, a estratégia i
 
 ## Regras do cenário
 
-- O cenário padrão contém diferentes tipos de chamados e repete a descrição da impressora da telefonia em várias ocorrências. O solicitante escolhe urgência e impacto separadamente, cada um entre 1 e 3; assim, pode declarar 3/3, 2/3, 1/1 ou outra combinação possível.
+- O catálogo contém oito tipos de chamados com três combinações de criticidade real cada. A cada execução, quatro tipos são selecionados; cada um aparece duas vezes, uma com criticidade baixa e outra com gravidade variável. Isso permite observar a mesma descrição em condições diferentes, com um conjunto e uma ordem que mudam entre execuções. O solicitante escolhe urgência e impacto separadamente, cada um entre 1 e 3; assim, pode declarar 3/3, 2/3, 1/1 ou outra combinação possível.
 - O simulador distingue declaração honesta, meio inflada, inflada, subestimada e divergente, comparando os níveis numéricos com os reais. O modelo não decide esse rótulo por texto.
 - Em ocorrências repetidas da mesma descrição, uma categoria estratégica ainda não usada rende +8 pontos de utilidade ao solicitante. Esse bônus incentiva a alternância entre honestidade, exagero parcial e exagero máximo, sem escolher a ação por ele.
 - A prioridade usa o produto urgência × impacto: P1 a partir de 6, P2 a partir de 3, caso contrário P3.
@@ -108,7 +108,7 @@ A saída mostra a descrição do chamado, os níveis declarados, a estratégia i
 - Uma inflação confirmada por revisão reduz reputação em 20 pontos; uma declaração honesta aumenta em 5. Subestimar ou informar níveis diferentes é registrado como divergência, sem a penalidade por inflação. A reputação permanece entre 0 e 100.
 - O sistema registra divergências não revisadas como alertas para a triagem seguinte. A espera simulada é 1 unidade para P1, 2 para P2 e 3 para P3.
 - Cada revisão consome 1 unidade de esforço operacional, permitindo ao técnico ponderar custo e benefício ao escolher se investiga.
-- O solicitante recebe incentivos estratégicos explícitos: evitar uma unidade de espera vale 8 pontos de utilidade; honestidade rende 5 pontos de reputação; inflação confirmada custa 20 pontos. Uma inflação aceita de P3 para P1 evita duas unidades de espera (16 pontos de utilidade), então pode ser atraente quando o histórico sugere baixo risco de revisão.
+- O solicitante recebe uma tabela calculada pelo simulador com as nove combinações possíveis de urgência e impacto, prioridade, espera economizada e utilidade estimada. A estimativa considera +8 por unidade de espera evitada, +5 por honestidade, -20 vezes o risco estimado de revisão para declarações infladas e o bônus de +8 por estratégia nova em descrição repetida. O risco começa em 25% e se ajusta ao histórico de revisões. O agente compara as opções com o histórico; isso incentiva declarações honestas e infladas quando cada uma tem melhor retorno, sem fixar a ação por rodada.
 - O técnico recebe como sinal a discrepância entre uma alegação máxima (3×3) e um relato de problema isolado/não crítico. Alertas anteriores tornam a revisão mais valiosa; revisões limpas repetidas tornam mais razoável poupar esforço.
 - Se uma classificação P1 reaparecer após declarações de prioridade menor, o simulador sinaliza esse retorno ao técnico antes da decisão. O alerta é calculado a partir do histórico de classificações submetidas e não obriga o técnico a revisar.
 - Quando uma descrição repetida recebe níveis diferentes de uma ocorrência anterior, o simulador mostra as declarações anteriores e sinaliza a variação para o técnico analisar. A mudança pode refletir uma gravidade diferente, portanto não é tratada automaticamente como fraude.
